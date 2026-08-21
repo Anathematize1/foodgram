@@ -26,12 +26,13 @@ class TagAdmin(admin.ModelAdmin):
 class IngredientAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'measurement_unit')
     search_fields = ('name',)
+    list_filter = ('measurement_unit',)
 
 
 @admin.register(Recipe)
 class RecipeAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'author', 'favorites_count')
-    search_fields = ('name', 'author__username')
+    search_fields = ('name', 'author__username', 'author__email')
     list_filter = ('tags',)
     inlines = (RecipeIngredientInline,)
     readonly_fields = ('favorites_count',)

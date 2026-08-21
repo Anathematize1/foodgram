@@ -1,5 +1,12 @@
 """Вьюсеты и вспомогательные представления API."""
-from django.db.models import BooleanField, Exists, OuterRef, Value
+from django.db.models import (
+    BooleanField,
+    Count,
+    Exists,
+    OuterRef,
+    Prefetch,
+    Value,
+)
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from djoser.views import UserViewSet as DjoserUserViewSet
@@ -48,6 +55,32 @@ class UserViewSet(DjoserUserViewSet):
             return (AllowAny(),)
         return (IsAuthenticated(),)
 
+    def get_queryset(self):
+        queryset = User.objects.all()
+        user = self.request.user
+        false_value = Value(False, output_field=BooleanField())
+        if user.is_authenticated:
+            return queryset.annotate(
+                is_subscribed_ann=Exists(
+                    Subscription.objects.filter(
+                        user=user,
+                        author=OuterRef('pk'),
+                    ),
+                ),
+            )
+        return queryset.annotate(is_subscribed_ann=false_value)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        user = self.request.user
+        if user.is_authenticated:
+            context['subscribed_ids'] = set(
+                user.subscriptions.values_list('author_id', flat=True),
+            )
+        else:
+            context['subscribed_ids'] = set()
+        return context
+
     @action(
         methods=('put', 'delete'),
         detail=False,
@@ -79,7 +112,15 @@ class UserViewSet(DjoserUserViewSet):
         """Возвращает авторов, на которых подписан пользователь."""
         queryset = User.objects.filter(
             subscribers__user=request.user,
-        ).prefetch_related('recipes')
+        ).annotate(
+            recipes_count=Count('recipes', distinct=True),
+            is_subscribed_ann=Value(True, output_field=BooleanField()),
+        ).prefetch_related(
+            Prefetch(
+                'recipes',
+                queryset=Recipe.objects.order_by('-pub_date'),
+            ),
+        ).order_by('id')
         pages = self.paginate_queryset(queryset)
         serializer = UserWithRecipesSerializer(
             pages,
@@ -113,7 +154,18 @@ class UserViewSet(DjoserUserViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             serializer = UserWithRecipesSerializer(
-                author,
+                User.objects.annotate(
+                    recipes_count=Count('recipes', distinct=True),
+                    is_subscribed_ann=Value(
+                        True,
+                        output_field=BooleanField(),
+                    ),
+                ).prefetch_related(
+                    Prefetch(
+                        'recipes',
+                        queryset=Recipe.objects.order_by('-pub_date'),
+                    ),
+                ).get(pk=author.pk),
                 context={'request': request},
             )
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -155,6 +207,17 @@ class RecipeViewSet(AddDeleteRecipeMixin, viewsets.ModelViewSet):
     permission_classes = (IsAuthorOrReadOnly,)
     filterset_class = RecipeFilter
     http_method_names = ('get', 'post', 'patch', 'delete', 'head', 'options')
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        user = self.request.user
+        if user.is_authenticated:
+            context['subscribed_ids'] = set(
+                user.subscriptions.values_list('author_id', flat=True),
+            )
+        else:
+            context['subscribed_ids'] = set()
+        return context
 
     def get_queryset(self):
         queryset = Recipe.objects.select_related('author').prefetch_related(

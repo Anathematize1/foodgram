@@ -1,19 +1,45 @@
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv(
-    'SECRET_KEY',
-    'django-insecure-+oc%9hiog)40xt#+%$p)6e3_ygh&!+n4-uuahgkqbz5d3^ceo3',
-)
 
-DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
+def load_env_file(path):
+    if not path.is_file():
+        return
+    for raw_line in path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
-ALLOWED_HOSTS = os.getenv(
-    'ALLOWED_HOSTS',
-    'localhost,127.0.0.1',
-).split(',')
+
+load_env_file(BASE_DIR.parent / '.env')
+load_env_file(BASE_DIR / '.env')
+
+if 'test' in sys.argv:
+    os.environ.setdefault('SECRET_KEY', 'test-secret-key-not-for-production')
+    os.environ.setdefault('DEBUG', 'True')
+
+DEBUG = os.getenv('DEBUG', 'False').lower() in {'true', '1', 'yes'}
+
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-local-dev-only'
+    else:
+        raise ValueError('Не задана переменная окружения SECRET_KEY')
+
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv(
+        'ALLOWED_HOSTS',
+        'localhost,127.0.0.1',
+    ).split(',')
+    if host.strip()
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -62,15 +88,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'foodgram.wsgi.application'
 
-if os.getenv('POSTGRES_DB'):
+if os.getenv('POSTGRES_HOST'):
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.getenv('POSTGRES_DB'),
             'USER': os.getenv('POSTGRES_USER'),
             'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '5432'),
+            'HOST': os.getenv(
+                'POSTGRES_HOST',
+                os.getenv('DB_HOST', 'localhost'),
+            ),
+            'PORT': os.getenv(
+                'POSTGRES_PORT',
+                os.getenv('DB_PORT', '5432'),
+            ),
         }
     }
 else:
@@ -116,8 +148,18 @@ AUTH_USER_MODEL = 'users.User'
 
 CORS_URLS_REGEX = r'^/api/.*$'
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
+    origin.strip()
+    for origin in os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000',
+    ).split(',')
+    if origin.strip()
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
 ]
 
 REST_FRAMEWORK = {

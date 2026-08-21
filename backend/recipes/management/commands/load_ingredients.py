@@ -26,20 +26,38 @@ class Command(BaseCommand):
             raise CommandError(f'Файл не найден: {path}')
 
         ingredients = []
+        skipped = 0
         with path.open(encoding='utf-8') as csvfile:
             reader = csv.reader(csvfile)
-            for row in reader:
+            for line_number, row in enumerate(reader, start=1):
                 if len(row) != 2:
+                    skipped += 1
+                    self.stderr.write(
+                        f'Строка {line_number}: пропущена, '
+                        'ожидалось 2 колонки.',
+                    )
                     continue
-                name, measurement_unit = row
+                name, measurement_unit = (item.strip() for item in row)
+                if not name or not measurement_unit:
+                    skipped += 1
+                    self.stderr.write(
+                        f'Строка {line_number}: пропущена, пустые значения.',
+                    )
+                    continue
                 ingredients.append(
                     Ingredient(name=name, measurement_unit=measurement_unit),
                 )
 
-        created = Ingredient.objects.bulk_create(
+        before = Ingredient.objects.count()
+        Ingredient.objects.bulk_create(
             ingredients,
             ignore_conflicts=True,
         )
+        created_count = Ingredient.objects.count() - before
         self.stdout.write(
-            self.style.SUCCESS(f'Загружено ингредиентов: {len(created)}'),
+            self.style.SUCCESS(
+                f'Обработано строк: {len(ingredients)}. '
+                f'Создано новых: {created_count}. '
+                f'Пропущено: {skipped}.',
+            ),
         )

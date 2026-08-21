@@ -49,7 +49,14 @@ class UserSerializer(DjoserUserSerializer):
         request = self.context.get('request')
         if not request or request.user.is_anonymous:
             return False
-        return request.user.subscriptions.filter(author=obj).exists()
+        if obj.pk == request.user.pk:
+            return False
+        if hasattr(obj, 'is_subscribed_ann'):
+            return bool(obj.is_subscribed_ann)
+        subscribed_ids = self.context.get('subscribed_ids')
+        if subscribed_ids is not None:
+            return obj.pk in subscribed_ids
+        return False
 
 
 class AvatarSerializer(serializers.ModelSerializer):
@@ -113,10 +120,7 @@ class UserWithRecipesSerializer(UserSerializer):
     """Пользователь со списком своих рецептов."""
 
     recipes = serializers.SerializerMethodField()
-    recipes_count = serializers.IntegerField(
-        source='recipes.count',
-        read_only=True,
-    )
+    recipes_count = serializers.IntegerField(read_only=True)
 
     class Meta(UserSerializer.Meta):
         fields = UserSerializer.Meta.fields + ('recipes', 'recipes_count')
@@ -145,8 +149,14 @@ class RecipeReadSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
-    is_favorited = serializers.SerializerMethodField()
-    is_in_shopping_cart = serializers.SerializerMethodField()
+    is_favorited = serializers.BooleanField(
+        read_only=True,
+        source='is_favorited_ann',
+    )
+    is_in_shopping_cart = serializers.BooleanField(
+        read_only=True,
+        source='is_in_shopping_cart_ann',
+    )
 
     class Meta:
         model = Recipe
@@ -162,24 +172,6 @@ class RecipeReadSerializer(serializers.ModelSerializer):
             'text',
             'cooking_time',
         )
-
-    def get_is_favorited(self, obj):
-        return self._get_user_recipe_flag(obj, 'is_favorited_ann', 'favorites')
-
-    def get_is_in_shopping_cart(self, obj):
-        return self._get_user_recipe_flag(
-            obj,
-            'is_in_shopping_cart_ann',
-            'in_shopping_cart',
-        )
-
-    def _get_user_recipe_flag(self, obj, annotation, related_name):
-        if hasattr(obj, annotation):
-            return bool(getattr(obj, annotation))
-        request = self.context.get('request')
-        if not request or request.user.is_anonymous:
-            return False
-        return getattr(obj, related_name).filter(user=request.user).exists()
 
 
 class RecipeWriteSerializer(serializers.ModelSerializer):
@@ -264,4 +256,15 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
     def to_representation(self, instance):
+        user = self.context['request'].user
+        if user.is_authenticated:
+            instance.is_favorited_ann = user.favorites.filter(
+                recipe=instance,
+            ).exists()
+            instance.is_in_shopping_cart_ann = user.shopping_cart.filter(
+                recipe=instance,
+            ).exists()
+        else:
+            instance.is_favorited_ann = False
+            instance.is_in_shopping_cart_ann = False
         return RecipeReadSerializer(instance, context=self.context).data
