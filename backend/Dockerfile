@@ -5,11 +5,13 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install gunicorn==23.0.0
 
-COPY . .
+COPY backend/requirements.txt .
 
-RUN mkdir -p /app/static /app/media
+RUN pip install -r requirements.txt --no-cache-dir
 
-ENTRYPOINT ["sh", "/app/entrypoint.sh"]
+COPY backend/ .
+COPY data/ /app/data/
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "foodgram.wsgi"]

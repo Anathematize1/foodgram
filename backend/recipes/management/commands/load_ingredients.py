@@ -17,8 +17,19 @@ class Command(BaseCommand):
             'path',
             nargs='?',
             type=str,
-            default=str(settings.BASE_DIR.parent / 'data' / 'ingredients.csv'),
+            default=self._default_csv_path(),
         )
+
+    @staticmethod
+    def _default_csv_path():
+        candidates = (
+            settings.BASE_DIR / 'data' / 'ingredients.csv',
+            settings.BASE_DIR.parent / 'data' / 'ingredients.csv',
+        )
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        return str(candidates[0])
 
     def handle(self, *args, **options):
         path = Path(options['path'])
