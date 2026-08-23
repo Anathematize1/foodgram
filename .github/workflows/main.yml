@@ -119,6 +119,19 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
+      - name: Prepare deploy directory
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            mkdir -p "$HOME/foodgram"
+            sudo chown -R "$(whoami):$(whoami)" "$HOME/foodgram"
+            sudo chmod u+rwx "$HOME/foodgram"
+            if [ -f "$HOME/foodgram/docker-compose.production.yml" ]; then
+              sudo chmod u+rw "$HOME/foodgram/docker-compose.production.yml"
+            fi
       - name: Copy docker-compose.yml via ssh
         uses: appleboy/scp-action@master
         with:
