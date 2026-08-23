@@ -79,6 +79,6 @@ Settings → Secrets and variables → Actions:
 | `TELEGRAM_TO` | id чата |
 | `TELEGRAM_TOKEN` | токен бота |
 
-На сервере в каталоге `~/foodgram` должен лежать файл `.env` (в репозиторий его не коммитить). Образы в `docker-compose.production.yml` должны совпадать с `DOCKER_USERNAME`.
+На сервере в каталоге `~/foodgram` должен лежать файл `.env` (в репозиторий его не коммитить). В нём нужны и `POSTGRES_HOST=db`, и `DB_HOST=db`. Образы в `docker-compose.production.yml` должны совпадать с `DOCKER_USERNAME`.
 
 Приватный ключ и пароли храните только в Secrets / `.env` на сервере, не в git.
