@@ -137,7 +137,13 @@ jobs:
           ssh "$REMOTE_USER@$REMOTE_HOST" 'bash -s' <<'ENDSSH'
           set -e
           cd "$HOME/foodgram"
-          sudo docker system prune -af
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if sudo docker system prune -af; then
+              break
+            fi
+            echo "Docker prune is busy, retry $attempt"
+            sleep 15
+          done || true
           sudo docker compose -f docker-compose.production.yml pull
           sudo docker compose -f docker-compose.production.yml down
           sudo docker compose -f docker-compose.production.yml up -d
