@@ -112,50 +112,39 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs:
       - build_and_push_to_docker_hub
       - build_frontend_and_push_to_docker_hub
       - build_gateway_and_push_to_docker_hub
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
-      - name: Prepare deploy directory
-        uses: appleboy/ssh-action@master
+        uses: actions/checkout@v4
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.1
         with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            mkdir -p "$HOME/foodgram"
-            sudo chown -R "$(whoami):$(whoami)" "$HOME/foodgram"
-            sudo chmod u+rwx "$HOME/foodgram"
-            if [ -f "$HOME/foodgram/docker-compose.production.yml" ]; then
-              sudo chmod u+rw "$HOME/foodgram/docker-compose.production.yml"
-            fi
-      - name: Copy docker-compose.yml via ssh
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "docker-compose.production.yml"
-          target: "foodgram"
-      - name: Executing remote ssh commands to deploy
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          command_timeout: 20m
-          script: |
-            cd foodgram
-            sudo docker system prune -af
-            sudo docker compose -f docker-compose.production.yml pull
-            sudo docker compose -f docker-compose.production.yml down
-            sudo docker compose -f docker-compose.production.yml up -d
-            sudo docker compose -f docker-compose.production.yml exec -T backend python manage.py migrate
-            sudo docker compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
-            sudo docker compose -f docker-compose.production.yml exec -T backend python manage.py load_ingredients
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+      - name: Deploy over SSH
+        env:
+          REMOTE_HOST: ${{ secrets.HOST }}
+          REMOTE_USER: ${{ secrets.USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$REMOTE_HOST" >> ~/.ssh/known_hosts
+          ssh "$REMOTE_USER@$REMOTE_HOST" 'mkdir -p "$HOME/foodgram" && sudo chown -R "$(whoami):$(whoami)" "$HOME/foodgram" && sudo chmod u+rwx "$HOME/foodgram"'
+          scp docker-compose.production.yml "$REMOTE_USER@$REMOTE_HOST:~/foodgram/docker-compose.production.yml"
+          ssh "$REMOTE_USER@$REMOTE_HOST" 'bash -s' <<'ENDSSH'
+          set -e
+          cd "$HOME/foodgram"
+          sudo docker system prune -af
+          sudo docker compose -f docker-compose.production.yml pull
+          sudo docker compose -f docker-compose.production.yml down
+          sudo docker compose -f docker-compose.production.yml up -d
+          sudo docker compose -f docker-compose.production.yml exec -T backend python manage.py migrate
+          sudo docker compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
+          sudo docker compose -f docker-compose.production.yml exec -T backend python manage.py load_ingredients
+          ENDSSH
 
   send_message:
     runs-on: ubuntu-latest
