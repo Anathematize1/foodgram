@@ -2,12 +2,14 @@
 import secrets
 import string
 
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from users.models import User
 
 from .constants import (
+    MAX_AMOUNT,
+    MAX_COOKING_TIME,
     MAX_INGREDIENT_NAME,
     MAX_MEASUREMENT_UNIT,
     MAX_RECIPE_NAME,
@@ -19,13 +21,6 @@ from .constants import (
 )
 
 ALPHABET = string.ascii_letters + string.digits
-
-
-def generate_short_code():
-    """Возвращает случайный код для короткой ссылки на рецепт."""
-    return ''.join(
-        secrets.choice(ALPHABET) for _ in range(SHORT_CODE_LENGTH)
-    )
 
 
 class Tag(models.Model):
@@ -104,7 +99,10 @@ class Recipe(models.Model):
     )
     cooking_time = models.PositiveSmallIntegerField(
         'Время приготовления (в минутах)',
-        validators=(MinValueValidator(MIN_COOKING_TIME),),
+        validators=(
+            MinValueValidator(MIN_COOKING_TIME),
+            MaxValueValidator(MAX_COOKING_TIME),
+        ),
     )
     pub_date = models.DateTimeField(
         'Дата публикации',
@@ -117,7 +115,6 @@ class Recipe(models.Model):
         unique=True,
         db_index=True,
         editable=False,
-        default=generate_short_code,
     )
 
     class Meta:
@@ -128,11 +125,16 @@ class Recipe(models.Model):
     def __str__(self):
         return self.name
 
+    def generate_short_code(self):
+        return ''.join(
+            secrets.choice(ALPHABET) for _ in range(SHORT_CODE_LENGTH)
+        )
+
     def save(self, *args, **kwargs):
         if not self.short_code:
-            code = generate_short_code()
+            code = self.generate_short_code()
             while Recipe.objects.filter(short_code=code).exists():
-                code = generate_short_code()
+                code = self.generate_short_code()
             self.short_code = code
         super().save(*args, **kwargs)
 
@@ -154,7 +156,10 @@ class RecipeIngredient(models.Model):
     )
     amount = models.PositiveSmallIntegerField(
         'Количество',
-        validators=(MinValueValidator(MIN_AMOUNT),),
+        validators=(
+            MinValueValidator(MIN_AMOUNT),
+            MaxValueValidator(MAX_AMOUNT),
+        ),
     )
 
     class Meta:
@@ -171,17 +176,7 @@ class RecipeIngredient(models.Model):
         return f'{self.ingredient} в {self.recipe}'
 
 
-class UserRecipeRelation(models.Model):
-    """Абстрактная связь пользователя с рецептом."""
-
-    class Meta:
-        abstract = True
-
-    def __str__(self):
-        return f'{self.user} — {self.recipe}'
-
-
-class Favorite(UserRecipeRelation):
+class Favorite(models.Model):
     """Рецепт в избранном пользователя."""
 
     user = models.ForeignKey(
@@ -207,8 +202,11 @@ class Favorite(UserRecipeRelation):
             ),
         )
 
+    def __str__(self):
+        return f'{self.user} — {self.recipe}'
 
-class ShoppingCart(UserRecipeRelation):
+
+class ShoppingCart(models.Model):
     """Рецепт в списке покупок пользователя."""
 
     user = models.ForeignKey(
@@ -233,3 +231,6 @@ class ShoppingCart(UserRecipeRelation):
                 name='unique_shopping_cart',
             ),
         )
+
+    def __str__(self):
+        return f'{self.user} — {self.recipe}'

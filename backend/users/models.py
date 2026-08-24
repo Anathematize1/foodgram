@@ -1,23 +1,15 @@
 """Модели пользователей и подписок."""
 from django.contrib.auth.models import AbstractUser
-from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.db import models
 
-from .constants import MAX_EMAIL, MAX_NAME, MAX_USERNAME
+from .constants import MAX_NAME
 
 
 class User(AbstractUser):
     """Пользователь с авторизацией по email."""
 
-    username = models.CharField(
-        'Уникальный юзернейм',
-        max_length=MAX_USERNAME,
-        unique=True,
-        validators=(UnicodeUsernameValidator(),),
-    )
     email = models.EmailField(
         'Адрес электронной почты',
-        max_length=MAX_EMAIL,
         unique=True,
     )
     first_name = models.CharField('Имя', max_length=MAX_NAME)
