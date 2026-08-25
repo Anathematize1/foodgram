@@ -125,11 +125,6 @@ class Recipe(models.Model):
     def __str__(self):
         return self.name
 
-    def generate_short_code(self):
-        return ''.join(
-            secrets.choice(ALPHABET) for _ in range(SHORT_CODE_LENGTH)
-        )
-
     def save(self, *args, **kwargs):
         if not self.short_code:
             code = self.generate_short_code()
@@ -137,6 +132,11 @@ class Recipe(models.Model):
                 code = self.generate_short_code()
             self.short_code = code
         super().save(*args, **kwargs)
+
+    def generate_short_code(self):
+        return ''.join(
+            secrets.choice(ALPHABET) for _ in range(SHORT_CODE_LENGTH)
+        )
 
 
 class RecipeIngredient(models.Model):

@@ -12,11 +12,7 @@ from django.shortcuts import get_object_or_404, redirect
 from djoser.views import UserViewSet as DjoserUserViewSet
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import (
-    IsAuthorOrReadOnly,
-    AllowAny,
-    IsAuthenticated,
-)
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from recipes.models import Favorite, Ingredient, Recipe, ShoppingCart, Tag
@@ -24,6 +20,7 @@ from users.models import Subscription, User
 
 from .filters import IngredientFilter, RecipeFilter
 from .pagination import LimitPageNumberPagination
+from .permissions import IsAuthorOrReadOnly
 from .serializers import (
     AvatarSerializer,
     FavoriteSerializer,
@@ -60,6 +57,10 @@ class UserViewSet(DjoserUserViewSet):
                 ),
             )
         return queryset.annotate(is_subscribed=false_value)
+
+    def get_instance(self):
+        self.request.user.is_subscribed = False
+        return self.request.user
 
     @action(
         methods=('put',),
@@ -170,11 +171,24 @@ class RecipeViewSet(viewsets.ModelViewSet):
     http_method_names = ('get', 'post', 'patch', 'delete', 'head', 'options')
 
     def get_queryset(self):
-        queryset = Recipe.objects.select_related('author').prefetch_related(
+        user = self.request.user
+        false_value = Value(False, output_field=BooleanField())
+        if user.is_authenticated:
+            authors = User.objects.annotate(
+                is_subscribed=Exists(
+                    Subscription.objects.filter(
+                        user=user,
+                        author=OuterRef('pk'),
+                    ),
+                ),
+            )
+        else:
+            authors = User.objects.annotate(is_subscribed=false_value)
+        queryset = Recipe.objects.prefetch_related(
+            Prefetch('author', queryset=authors),
             'tags',
             'recipe_ingredients__ingredient',
         ).distinct()
-        user = self.request.user
         if user.is_authenticated:
             return queryset.annotate(
                 is_favorited=Exists(
@@ -190,7 +204,6 @@ class RecipeViewSet(viewsets.ModelViewSet):
                     ),
                 ),
             )
-        false_value = Value(False, output_field=BooleanField())
         return queryset.annotate(
             is_favorited=false_value,
             is_in_shopping_cart=false_value,

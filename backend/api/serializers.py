@@ -3,7 +3,6 @@ from django.db.models import BooleanField, Count, Prefetch, Value
 from drf_extra_fields.fields import Base64ImageField
 from rest_framework import serializers
 
-from recipes.constants import MAX_COOKING_TIME, MIN_COOKING_TIME
 from recipes.models import (
     Favorite,
     Ingredient,
@@ -38,7 +37,7 @@ class UserSerializer(serializers.ModelSerializer):
         return bool(
             request
             and request.user.is_authenticated
-            and getattr(obj, 'is_subscribed', False)
+            and obj.is_subscribed
         )
 
 
@@ -233,7 +232,7 @@ class RecipeReadSerializer(serializers.ModelSerializer):
         return bool(
             request
             and request.user.is_authenticated
-            and getattr(obj, 'is_favorited', False)
+            and obj.is_favorited
         )
 
     def get_is_in_shopping_cart(self, obj):
@@ -241,7 +240,7 @@ class RecipeReadSerializer(serializers.ModelSerializer):
         return bool(
             request
             and request.user.is_authenticated
-            and getattr(obj, 'is_in_shopping_cart', False)
+            and obj.is_in_shopping_cart
         )
 
 
@@ -253,11 +252,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         queryset=Tag.objects.all(),
         many=True,
     )
-    image = Base64ImageField(required=False)
-    cooking_time = serializers.IntegerField(
-        min_value=MIN_COOKING_TIME,
-        max_value=MAX_COOKING_TIME,
-    )
+    image = Base64ImageField()
 
     class Meta:
         model = Recipe
@@ -273,10 +268,6 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
     def validate(self, data):
         ingredients = data.get('ingredients')
         tags = data.get('tags')
-        if self.instance is None and not data.get('image'):
-            raise serializers.ValidationError(
-                {'image': 'Нужно изображение рецепта.'},
-            )
         if not ingredients:
             raise serializers.ValidationError(
                 {'ingredients': 'Нужен хотя бы один ингредиент.'},
@@ -295,6 +286,13 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
                 {'tags': 'Теги не должны повторяться.'},
             )
         return data
+
+    def validate_image(self, image):
+        if not image:
+            raise serializers.ValidationError(
+                'Нужно изображение рецепта.',
+            )
+        return image
 
     @staticmethod
     def set_ingredients(recipe, ingredients):
@@ -317,6 +315,9 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         )
         recipe.tags.set(tags)
         self.set_ingredients(recipe, ingredients)
+        recipe.is_favorited = False
+        recipe.is_in_shopping_cart = False
+        recipe.author.is_subscribed = False
         return recipe
 
     @transaction.atomic
@@ -329,5 +330,4 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
     def to_representation(self, instance):
-        instance = self.context['view'].get_queryset().get(pk=instance.pk)
         return RecipeReadSerializer(instance, context=self.context).data
