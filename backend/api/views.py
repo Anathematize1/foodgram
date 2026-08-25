@@ -62,6 +62,11 @@ class UserViewSet(DjoserUserViewSet):
         self.request.user.is_subscribed = False
         return self.request.user
 
+    def get_permissions(self):
+        if self.action == 'me':
+            return (IsAuthenticated(),)
+        return super().get_permissions()
+
     @action(
         methods=('put',),
         detail=False,
