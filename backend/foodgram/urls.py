@@ -5,6 +5,7 @@ from django.urls import include, path
 
 from api.views import recipe_short_link
 
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
